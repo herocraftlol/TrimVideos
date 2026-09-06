@@ -1,0 +1,101 @@
+name: Build & release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $csproj = "ShortsPrep/ShortsPrep.csproj"
+          [xml]$xml = Get-Content $csproj
+          $v = $xml.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = "1.0.0" }
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "TAG=v$v"   | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Version lue: $v"
+
+      - name: Publish portable exe
+        run: >
+          dotnet publish ShortsPrep/ShortsPrep.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          -o publish
+
+      - name: Rename portable binary
+        shell: pwsh
+        run: |
+          mv publish/ShortsPrep.exe publish/TrimVideos.exe
+          mv publish/ShortsPrep.pdb publish/TrimVideos.pdb 2>$null || $true
+
+      - name: Package source zip
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          if (Test-Path "TrimVideos-$ver-source.zip") { Remove-Item "TrimVideos-$ver-source.zip" }
+          # Add -Force to include hidden files like .github and .gitignore
+          Compress-Archive -Path . -DestinationPath "TrimVideos-$ver-source.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrimVideos-portable
+          path: |
+            publish/TrimVideos.exe
+            TrimVideos-${{ steps.version.outputs.VERSION }}-source.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: TrimVideos-portable
+          path: artifacts
+
+      - name: Read release notes
+        id: notes
+        shell: bash
+        run: |
+          if [ -f RELEASE_NOTES.md ]; then
+            echo "BODY<<EOF" >> $GITHUB_OUTPUT
+            cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "BODY=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.BODY }}
+          generate_release_notes: true
+          files: |
+            artifacts/TrimVideos.exe
+            artifacts/*-source.zip
+          draft: false
+          prerelease: false
