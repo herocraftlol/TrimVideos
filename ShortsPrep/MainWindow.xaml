@@ -45,7 +45,9 @@
                     <Button x:Name="TrimVideoButton" Content="Rogner / sélectionner une partie..." Padding="10,6"
                             Click="TrimVideoButton_Click" IsEnabled="False"/>
                     <TextBlock x:Name="VideoTrimText" Text="" Foreground="{StaticResource AccentBrush}"
-                               Margin="10,0,0,0" VerticalAlignment="Center"/>
+                               Margin="10,0,10,0" VerticalAlignment="Center"/>
+                    <Button x:Name="OpenEditorButton" Content="Éditeur avancé (coupes multiples + effets)..." Padding="10,6"
+                            Click="OpenEditorButton_Click" IsEnabled="False"/>
                 </StackPanel>
 
                 <!-- Mode image + audio -->

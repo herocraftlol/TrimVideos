@@ -80,6 +80,7 @@ public partial class MainWindow : Window
             _videoTrim = null;
             VideoTrimText.Text = "";
             TrimVideoButton.IsEnabled = true;
+            OpenEditorButton.IsEnabled = true;
         }
     }
 
@@ -149,6 +150,20 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log("Impossible d'ouvrir l'éditeur de recadrage : " + ex.Message);
+        }
+    }
+
+    private void OpenEditorButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedFile is null) return;
+        try
+        {
+            var editor = new VideoEditorWindow(_selectedFile) { Owner = this };
+            editor.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            Log("Impossible d'ouvrir l'éditeur avancé : " + ex.Message);
         }
     }
 

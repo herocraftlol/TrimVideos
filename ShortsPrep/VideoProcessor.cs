@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -264,6 +265,154 @@ public class VideoProcessor
 
         progress?.Report("Combinaison image + audio (commande simple, audio non ré-encodé)...");
         await RunAsync(FfmpegManager.FfmpegExe, args, audioInfo.DurationSeconds, percentProgress);
+    }
+
+    /// <summary>
+    /// Monte plusieurs segments d'une vidéo bout à bout, avec effets optionnels
+    /// (luminosité/contraste/saturation/rotation, mouvement de caméra), sans perte.
+    ///
+    /// Deux modes :
+    /// - FastStreamCopy : coupe + recolle par copie de flux (zéro ré-encodage, donc zéro
+    ///   perte garantie), mais chaque coupe est alignée sur l'image clé la plus proche —
+    ///   le point de départ réel peut être légèrement avant celui demandé. Aucun effet
+    ///   possible dans ce mode (une copie de flux ne peut pas être filtrée).
+    /// - PreciseLosslessReencode : coupes exactes à la frame près, effets appliqués,
+    ///   ré-encodage vidéo CRF 0 (perte nulle) + audio FLAC (sans perte). Plus lent,
+    ///   fichiers volumineux. Sortie en .mkv pour garantir un FLAC fiable.
+    /// </summary>
+    public async Task EditVideoAsync(
+        string inputPath,
+        string outputPath,
+        List<EditSegment> segments,
+        EditEffects effects,
+        CutExportMode mode,
+        MotionSettings? motion = null,
+        IProgress<string>? progress = null,
+        IProgress<int>? percentProgress = null)
+    {
+        motion ??= MotionSettings.None;
+        if (segments.Count == 0) throw new InvalidOperationException("Aucun segment à monter.");
+
+        double totalDuration = segments.Sum(s => s.Duration);
+        bool needsReencode = mode == CutExportMode.PreciseLosslessReencode || !effects.IsNeutral || motion.IsAnyEnabled;
+
+        if (!needsReencode)
+        {
+            await EditByStreamCopyAsync(inputPath, outputPath, segments, progress, percentProgress);
+            return;
+        }
+
+        var info = await ProbeAsync(inputPath);
+        List<BassPeak> peaks = new();
+        if (motion.BassReactiveEnabled && info.HasAudio)
+        {
+            progress?.Report("Analyse des basses de l'audio...");
+            peaks = await _bassAnalyzer.AnalyzePeaksAsync(inputPath, motion.BassSensitivity01);
+        }
+
+        var filterBuilder = new StringBuilder();
+        var vLabels = new List<string>();
+        var aLabels = new List<string>();
+        for (int i = 0; i < segments.Count; i++)
+        {
+            var seg = segments[i];
+            filterBuilder.Append(
+                $"[0:v]trim=start={seg.StartSeconds.ToString(CultureInfo.InvariantCulture)}:end={seg.EndSeconds.ToString(CultureInfo.InvariantCulture)},setpts=PTS-STARTPTS[v{i}];");
+            filterBuilder.Append(
+                $"[0:a]atrim=start={seg.StartSeconds.ToString(CultureInfo.InvariantCulture)}:end={seg.EndSeconds.ToString(CultureInfo.InvariantCulture)},asetpts=PTS-STARTPTS[a{i}];");
+            vLabels.Add($"[v{i}]");
+            aLabels.Add($"[a{i}]");
+        }
+
+        for (int i = 0; i < segments.Count; i++)
+            filterBuilder.Append(vLabels[i]).Append(aLabels[i]);
+        filterBuilder.Append($"concat=n={segments.Count}:v=1:a=1[vcat][acat];");
+
+        // Rotation (transpose : 1=90° horaire, 2=90° anti-horaire ; 180° = deux fois 90°).
+        string rotateFilter = effects.RotationDegrees switch
+        {
+            90 => "transpose=1,",
+            180 => "transpose=1,transpose=1,",
+            270 => "transpose=2,",
+            _ => ""
+        };
+
+        string colorFilter =
+            $"eq=brightness={effects.Brightness.ToString(CultureInfo.InvariantCulture)}:" +
+            $"contrast={effects.Contrast.ToString(CultureInfo.InvariantCulture)}:" +
+            $"saturation={effects.Saturation.ToString(CultureInfo.InvariantCulture)}";
+
+        filterBuilder.Append($"[vcat]{rotateFilter}{colorFilter}[vgraded];");
+
+        string finalVideoLabel = "vgraded";
+        if (motion.IsAnyEnabled)
+        {
+            // Le mouvement de caméra a besoin de connaître les dimensions finales (après
+            // rotation éventuelle) : on les déduit de l'info source en tenant compte du swap
+            // largeur/hauteur pour une rotation à 90/270°.
+            bool swapped = effects.RotationDegrees is 90 or 270;
+            var motionInfo = new VideoInfo(
+                swapped ? info.Height : info.Width, swapped ? info.Width : info.Height,
+                totalDuration, info.VideoCodec, info.HasAudio);
+            string motionFilter = BuildMotionFilter(motionInfo, motionInfo.Width, motionInfo.Height, motion, peaks, totalDuration);
+            filterBuilder.Append($"[vgraded]{motionFilter}[vfinal];");
+            finalVideoLabel = "vfinal";
+        }
+
+        // Retire le point-virgule final superflu.
+        if (filterBuilder[^1] == ';') filterBuilder.Length -= 1;
+
+        var args =
+            $"-y -i \"{inputPath}\" -filter_complex \"{filterBuilder}\" " +
+            $"-map \"[{finalVideoLabel}]\" -map \"[acat]\" " +
+            $"-c:v libx264 -preset veryslow -crf 0 -pix_fmt yuv420p " +
+            $"-c:a flac -compression_level 8 \"{outputPath}\"";
+
+        progress?.Report("Montage et rendu final (100% sans perte)...");
+        await RunAsync(FfmpegManager.FfmpegExe, args, totalDuration, percentProgress);
+    }
+
+    /// <summary>
+    /// Coupe + recolle par copie de flux pure (aucun décodage/ré-encodage, donc zéro perte
+    /// garantie), en passant par des fichiers temporaires et le démuxeur concat de ffmpeg.
+    /// Chaque coupe est alignée sur l'image clé la plus proche (comportement standard des
+    /// outils de coupe sans perte type "LosslessCut").
+    /// </summary>
+    private async Task EditByStreamCopyAsync(
+        string inputPath, string outputPath, List<EditSegment> segments,
+        IProgress<string>? progress, IProgress<int>? percentProgress)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"shortsprep_edit_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var listFile = Path.Combine(tempDir, "list.txt");
+            var listLines = new List<string>();
+
+            for (int i = 0; i < segments.Count; i++)
+            {
+                var seg = segments[i];
+                var segPath = Path.Combine(tempDir, $"seg_{i:D3}{Path.GetExtension(inputPath)}");
+                var args =
+                    $"-y -ss {seg.StartSeconds.ToString(CultureInfo.InvariantCulture)} -i \"{inputPath}\" " +
+                    $"-to {seg.Duration.ToString(CultureInfo.InvariantCulture)} -c copy \"{segPath}\"";
+                progress?.Report($"Découpe du segment {i + 1}/{segments.Count} (copie sans perte)...");
+                await RunAsync(FfmpegManager.FfmpegExe, args);
+                listLines.Add($"file '{segPath.Replace("'", "'\\''")}'");
+                percentProgress?.Report((int)((i + 1) / (double)segments.Count * 90));
+            }
+
+            await File.WriteAllLinesAsync(listFile, listLines);
+
+            var concatArgs = $"-y -f concat -safe 0 -i \"{listFile}\" -c copy \"{outputPath}\"";
+            progress?.Report("Recollage des segments (copie sans perte)...");
+            await RunAsync(FfmpegManager.FfmpegExe, concatArgs);
+            percentProgress?.Report(100);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best effort */ }
+        }
     }
 
     private static (int Width, int Height) GetDimensions(Orientation orientation) => orientation switch
