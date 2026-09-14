@@ -12,10 +12,10 @@
     <Company>herocraftlol</Company>
     <Authors>herocraftlol</Authors>
     <Copyright>Copyright © herocraftlol</Copyright>
-    <Version>1.2.0</Version>
-    <AssemblyVersion>1.2.0.0</AssemblyVersion>
-    <FileVersion>1.2.0.0</FileVersion>
-    <InformationalVersion>1.2.0</InformationalVersion>
+    <Version>1.3.0</Version>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
+    <FileVersion>1.3.0.0</FileVersion>
+    <InformationalVersion>1.3.0</InformationalVersion>
     <ApplicationIcon></ApplicationIcon>
     <Platforms>x64</Platforms>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

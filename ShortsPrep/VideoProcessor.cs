@@ -63,7 +63,16 @@ public class VideoProcessor
         foreach (var stream in doc.RootElement.GetProperty("streams").EnumerateArray())
         {
             var type = stream.GetProperty("codec_type").GetString();
-            if (type == "video" && width == 0)
+
+            // Une pochette intégrée (MP3/FLAC/M4A avec cover art) apparaît comme un flux
+            // "vidéo" d'une seule image aux yeux de ffprobe, marquée disposition.attached_pic=1.
+            // Ce n'est pas une vraie vidéo : on l'ignore pour ne pas la traiter comme telle
+            // (sinon les filtres/ré-encodages vidéo échouent dessus).
+            bool isAttachedPic = stream.TryGetProperty("disposition", out var disposition)
+                && disposition.TryGetProperty("attached_pic", out var attachedPic)
+                && attachedPic.GetInt32() == 1;
+
+            if (type == "video" && width == 0 && !isAttachedPic)
             {
                 width = stream.GetProperty("width").GetInt32();
                 height = stream.GetProperty("height").GetInt32();
@@ -431,9 +440,11 @@ public class VideoProcessor
             ? $"-y -i \"{inputPath}\" -vf \"scale=480:-2\" " +
               $"-c:v libx264 -preset ultrafast -crf 28 -profile:v baseline -level 3.0 " +
               $"-c:a aac -b:a 128k -movflags +faststart \"{outputPath}\""
-            // Fichier audio seul (pas de flux vidéo) : on ne peut pas appliquer de filtre
-            // vidéo dessus. On ré-encode juste l'audio dans un conteneur toujours lisible.
-            : $"-y -i \"{inputPath}\" -c:a aac -b:a 128k \"{outputPath}\"";
+            // Fichier audio seul (pas de vrai flux vidéo) : -vn exclut explicitement toute
+            // pochette intégrée (cover art), que ffmpeg reprendrait sinon par défaut même
+            // sans -c:v — et qui plante le ré-encodage (le conteneur mp4 refuse d'y stocker
+            // de l'h264 à la place d'une image de couverture attendue).
+            : $"-y -i \"{inputPath}\" -vn -c:a aac -b:a 128k \"{outputPath}\"";
 
         await RunAsync(FfmpegManager.FfmpegExe, args);
     }
@@ -586,7 +597,15 @@ public class VideoProcessor
         await process.WaitForExitAsync();
 
         if (process.ExitCode != 0)
-            throw new InvalidOperationException($"FFmpeg a échoué (code {process.ExitCode}) :\n{stderrLog}");
+        {
+            // Le log complet de ffmpeg commence toujours par une longue bannière (version,
+            // options de compilation...) sans intérêt pour diagnostiquer l'erreur : on ne
+            // garde que les dernières lignes, qui contiennent presque toujours la vraie cause.
+            var lines = stderrLog.ToString()
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var tail = string.Join('\n', lines.TakeLast(8));
+            throw new InvalidOperationException($"FFmpeg a échoué (code {process.ExitCode}) :\n{tail}");
+        }
 
         percentProgress?.Report(100);
     }
