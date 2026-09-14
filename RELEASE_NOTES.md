@@ -1,31 +1,78 @@
-# 🎬 TrimVideos v1.4.0 — Aperçu des vidéos portrait sans crash 🎬
+# ❄️ TrimVideos v1.5.0 — La préparation de l'aperçu ne semble plus jamais bloquée ❄️
 
-Bienvenue dans la v1.4.0 de **TrimVideos** (anciennement ShortsPrep) ! Cette release résout un bug d'encodage discret mais frustrant qui touchait les utilisateurs de vidéos portrait enregistrées au téléphone.
+Bienvenue dans la v1.5.0 de **TrimVideos** (anciennement ShortsPrep) ! Cette release s'attaque à un comportement qui pouvait sembler anormal : sur des vidéos un peu longues, la fenêtre de recadrage ou l'éditeur avancé affichait « Préparation de l'aperçu… » pendant un certain temps, sans indication visible de progression, et il arrivait que l'utilisateur se demande si l'application était plantée.
 
 ---
 
-## 🆕 Nouveautés de la v1.4.0
+## 🆕 Nouveautés de la v1.5.0
 
-### 🎬 Bugfix : l'aperçu échouait sur certaines vidéos portrait de téléphone
+### ❄️ Bugfix n°1 : la préparation de l'aperçu pouvait sembler bloquée indéfiniment
 
-**Symptôme :** sur certains fichiers vidéo portrait (typiquement ceux filmés à la verticale sur iPhone/Android, mais aussi d'autres cas moins évidents), la génération du proxy de prévisualisation plantait avec une erreur cryptique du type « *x264 [error]: open: Invalid argument* » ou « *could not open encoder* ». Conséquence : pas d'aperçu dans la fenêtre de recadrage ni dans l'éditeur avancé, même si le montage / export final restait possible.
+**Symptôme :** sur des vidéos longues ou dans certains cas limites, le bouton « Préparation de l'aperçu… » restait affiché sans aucune indication de progression pendant plusieurs dizaines de secondes — voire, dans de rares cas extrêmes, plus longtemps que prévu.
 
-**Cause :** l'encodeur `libx264` du proxy imposait `profile:v baseline -level 3.0`, deux contraintes pensées pour la compatibilité de très vieux appareils. Sur certaines combinaisons résolution / fréquence d'images (typiquement : portrait 9:16 + fréquence d'images élevée = grand nombre de macroblocs/seconde), le débit calculé dépassait la limite autorisée par le niveau 3.0 et l'encodeur refusait carrément d'ouvrir la session d'encodage.
+**Cause (trois facteurs combinés) :**
 
-**Correctif v1.4.0 :** les contraintes `-profile:v baseline -level 3.0` sont retirées, et remplacées par `-pix_fmt yuv420p` :
+1. **Sortie standard non lue** — Le code redirigeait stdout de ffmpeg mais ne le lisait nulle part (`process.StandardOutput` n'était jamais ni drainé ni lu). En .NET, c'est un piège classique : si le tampon système (typiquement 4 Ko côté pipe) venait à se remplir, ffmpeg se bloquait en écriture, attendant qu'on lise — et comme personne ne le faisait, le process restait bloqué silencieusement. C'est un blocage purement logiciel, pas un blocage ffmpeg réel.
 
-```diff
-- $"-c:v libx264 -preset ultrafast -crf 28 -profile:v baseline -level 3.0 " +
-+ $"-c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p " +
-```
+2. **Aucune progression remontée à l'UI** — Même quand l'encodage avançait vraiment, rien ne le disait à l'utilisateur. Le texte « Préparation de l'aperçu… » restait figé.
 
-**Pourquoi ce changement est correct :**
+3. **Aucune limite de temps** — Si jamais le process ne se terminait vraiment pas (cas extrême), il n'y avait aucun garde-fou.
 
-- Le `MediaElement` WPF décode **tous les profils H.264** sans restriction (high, main, baseline…) — il n'a jamais eu besoin qu'on lui force baseline.
-- Le `MediaElement` WPF exige en revanche **`yuv420p`** comme pixel format : un autre pixel format (yuv444p, yuvj420p…) fait apparaître un écran noir sans message d'erreur. C'est la *seule* contrainte vraiment nécessaire.
-- Retirer `-level 3.0` supprime la limite de débit macroblocs/seconde qui faisait planter l'encodeur.
+**Correctif v1.5.0 — trois points :**
 
-**Conséquence utilisateur :** le proxy de prévisualisation fonctionne désormais pour **toutes les vidéos**, sans exception. Pas de message d'erreur cryptique, pas d'aperçu noir — la fenêtre de recadrage et l'éditeur avancé affichent le contenu immédiatement.
+1. **Drainage de stdout** — On attache un handler vide et on appelle `BeginOutputReadLine()` pour que le tampon système soit vidé en continu. ffmpeg ne peut plus se bloquer sur stdout :
+
+   ```csharp
+   // vider stdout en continu (sinon le tampon système peut se remplir
+   // et bloquer ffmpeg silencieusement)
+   process.OutputDataReceived += (_, _) => { };
+   // ... et après process.Start() :
+   process.BeginOutputReadLine();
+   ```
+
+2. **Lecture parallèle de stdout et stderr** — Au lieu de lire l'un après l'autre (ce qui peut bloquer si l'autre se remplit entre-temps), on lance les deux en parallèle et on attend les deux ensemble avec `Task.WhenAll`. C'est appliqué aussi à `BassAnalyzer.cs` :
+
+   ```csharp
+   var stdoutTask = process.StandardOutput.ReadToEndAsync();
+   var stderrTask = process.StandardError.ReadToEndAsync();
+   await Task.WhenAll(stdoutTask, stderrTask);
+   ```
+
+3. **Progression réelle affichée à l'utilisateur** — `CreateCompatiblePreviewAsync` accepte désormais un `IProgress<int>?` en troisième paramètre :
+
+   ```csharp
+   public async Task CreateCompatiblePreviewAsync(
+       string inputPath, string outputPath, IProgress<int>? percentProgress = null)
+   ```
+
+   La fenêtre de recadrage ET l'éditeur avancé créent un `Progress<int>` qui met à jour le message « Préparation de l'aperçu (43%)… » en direct. Sur une vidéo de 30 secondes, on voit le pourcentage monter jusqu'à 100%.
+
+4. **Timeout de sécurité 2 minutes** — `RunAsync` accepte désormais un `TimeSpan? timeout` :
+
+   ```csharp
+   if (timeout is not null)
+   {
+       var waitTask = process.WaitForExitAsync();
+       var completed = await Task.WhenAny(waitTask, Task.Delay(timeout.Value));
+       if (completed != waitTask)
+       {
+           try { process.Kill(entireProcessTree: true); } catch { /* déjà terminé entre-temps */ }
+           throw new InvalidOperationException(
+               $"FFmpeg n'a pas terminé après {timeout.Value.TotalSeconds:F0}s (arrêté par sécurité). " +
+               "Le fichier est peut-être très volumineux/long, ou dans un format inhabituel.");
+       }
+   }
+   ```
+
+   La préparation de l'aperçu est appelée avec `timeout: TimeSpan.FromMinutes(2)`. Au-delà, l'utilisateur a un message clair au lieu d'attendre indéfiniment.
+
+**Conséquence utilisateur :** la fenêtre de recadrage et l'éditeur avancé affichent maintenant un pourcentage qui avance, on voit en temps réel que le proxy se construit. Dans tous les cas extrêmes où l'encodage ne se terminerait pas vraiment, l'application se débloque au bout de 2 minutes avec un message clair.
+
+---
+
+### 🤖 Nouveauté : workflow GitHub Actions
+
+Pour faciliter la contribution, une workflow **`.github/workflows/build.yml`** est ajoutée : à chaque push sur `main` ou `master`, ou manuellement via l'onglet Actions, un runner **Windows** compile l'exécutable portable et l'upload en tant qu'artifact `ShortsPrep-portable` (contenant `ShortsPrep.exe`). Pratique pour vérifier rapidement qu'un patch ne casse pas la build, sans avoir à installer .NET localement.
 
 ---
 
@@ -45,7 +92,8 @@ TrimVideos est un **outil Windows gratuit et open-source** (WPF / .NET 8) qui au
 - **v1.1.0** — Éditeur vidéo avancé sans perte : coupes multiples, effets colorimétriques / rotation / Ken Burns, deux modes d'export rapide / précis, sortie `.mp4` ou `.mkv`.
 - **v1.2.0** — Proxy de prévisualisation H.264/AAC (le lecteur Windows intégré affiche enfin l'aperçu sur quasi tous les codecs, y compris HEVC), timeline visuelle dans l'éditeur, interface complètement repensée (palette bruns / corail-or).
 - **v1.3.0** — Pochettes audio MP3/FLAC supportées + messages d'erreur FFmpeg plus lisibles.
-- **v1.4.0** (cette version) — Contraintes H.264 profile/level retirées du proxy, l'aperçu fonctionne désormais sur **toutes** les vidéos (notamment portrait téléphone).
+- **v1.4.0** — Contraintes H.264 profile/level retirées du proxy, l'aperçu fonctionne désormais sur **toutes** les vidéos (notamment portrait téléphone).
+- **v1.5.0** (cette version) — Suppression du risque de blocage silencieux + progression visible + timeout 2 min + workflow GitHub Actions.
 
 ---
 
@@ -54,7 +102,7 @@ TrimVideos est un **outil Windows gratuit et open-source** (WPF / .NET 8) qui au
 | Fichier | Description |
 |---------|-------------|
 | **`TrimVideos.exe`** | Exécutable portable Windows (zéro installation, ~155 Mo self-contained). |
-| **`TrimVideos-1.4.0-source.zip`** | Code source complet de la version 1.4.0. |
+| **`TrimVideos-1.5.0-source.zip`** | Code source complet de la version 1.5.0. |
 
 ### Utilisation
 
@@ -62,7 +110,7 @@ TrimVideos est un **outil Windows gratuit et open-source** (WPF / .NET 8) qui au
 2. Lancez-le — aucune installation, c'est portable.
 3. Au premier lancement, FFmpeg (~100 Mo) est téléchargé automatiquement.
 4. Choisissez une vidéo **ou** une image + un son.
-5. (Optionnel) Cliquez sur **« Éditeur avancé (coupes multiples + effets)... »** pour monter la vidéo sans perte avant traitement — l'aperçu s'affiche désormais pour toutes les vidéos.
+5. (Optionnel) Cliquez sur **« Éditeur avancé (coupes multiples + effets)... »** — la fenêtre affiche désormais un pourcentage qui avance pendant la préparation de l'aperçu.
 6. Cliquez sur **Démarrer** et laissez FFmpeg travailler.
 7. Le fichier est prêt, ouvert automatiquement, et la page d'upload s'ouvre dans votre navigateur. Il ne reste plus qu'à glisser le fichier !
 
@@ -106,7 +154,8 @@ Prérequis : [SDK .NET 8](https://dotnet.microsoft.com/download) (Windows).
 - [x] ✅ Éditeur vidéo avancé sans perte (coupes multiples, effets, deux modes d'export) — v1.1.0.
 - [x] ✅ Proxy de prévisualisation + timeline visuelle + interface repensée — v1.2.0.
 - [x] ✅ Pochettes intégrées + messages FFmpeg plus clairs — v1.3.0.
-- [x] ✅ Contraintes H.264 profile/level retirées du proxy, l'aperçu fonctionne désormais sur toutes les vidéos — **v1.4.0**.
+- [x] ✅ Contraintes H.264 profile/level retirées du proxy — v1.4.0.
+- [x] ✅ Suppression du risque de blocage silencieux + progression visible + timeout 2 min + workflow CI — **v1.5.0**.
 - [ ] Upload automatique réel vers YouTube Shorts via l'API Google.
 - [ ] Watermark / recadrage ajustable à la souris (aperçu avant traitement).
 - [ ] File d'attente pour traiter plusieurs vidéos d'un coup.

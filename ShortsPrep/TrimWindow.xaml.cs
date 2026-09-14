@@ -50,9 +50,10 @@ public partial class TrimWindow : Window
             _updatingFromCode = false;
             UpdateLabels();
 
-            StatusMessage("Préparation de l'aperçu...");
+            StatusMessage("Préparation de l'aperçu (0%)...");
             _proxyPath = Path.Combine(Path.GetTempPath(), $"shortsprep_trimpreview_{Guid.NewGuid():N}.mp4");
-            await _processor.CreateCompatiblePreviewAsync(_sourcePath, _proxyPath);
+            var percent = new Progress<int>(p => StatusMessage($"Préparation de l'aperçu ({p}%)..."));
+            await _processor.CreateCompatiblePreviewAsync(_sourcePath, _proxyPath, percent);
 
             Media.Source = new Uri(_proxyPath, UriKind.Absolute);
         }

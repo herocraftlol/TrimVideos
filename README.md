@@ -2,10 +2,11 @@
 
 > **TrimVideos** est un outil Windows gratuit et open-source qui vous aide à monter, rogner et préparer vos vidéos pour TikTok, Instagram Reels et YouTube Shorts — sans perte de qualité, en quelques clics, et avec un aperçu toujours lisible même pour les codecs exotiques (HEVC, etc.).
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
 ![Plateforme](https://img.shields.io/badge/platform-Windows-0078d4.svg)
 ![.NET](https://img.shields.io/badge/.NET-8.0--windows-purple.svg)
 ![Licence](https://img.shields.io/badge/license-MIT-green.svg)
+![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 ---
 
@@ -22,13 +23,15 @@ TrimVideos vous simplifie tout le pipeline de publication d'une vidéo courte su
 
 ---
 
-## 🆕 Quoi de neuf dans la v1.4.0 ?
+## 🆕 Quoi de neuf dans la v1.5.0 ?
 
-Cette version résout un bug que les utilisateurs de vidéos **portrait prises au téléphone** pouvaient rencontrer avec la v1.3.0 :
+Cette version s'attaque à un point qui faisait hésiter certains utilisateurs : la **préparation du proxy d'aperçu pouvait sembler bloquée indéfiniment** sur certaines vidéos longues. Trois corrections ciblées :
 
-- 🎬 **Le proxy de prévisualisation ne s'ouvre plus** sur certaines vidéos portrait (typiquement des vidéos iPhone / Android filmées à la verticale). Dans la v1.3.0, sur ces fichiers-là, l'encodeur H.264 du proxy refusait tout simplement de s'ouvrir. Avec la v1.4.0, l'aperçu fonctionne pour **toutes les vidéos**.
+- 🧊 **Plus de blocage silencieux de ffmpeg**. Le code redirigeait la sortie standard (stdout) de ffmpeg mais ne la lisait jamais nulle part. En théorie, si le tampon système venait à se remplir, ffmpeg se bloquait en écriture — et le code attendait `WaitForExitAsync()` sans aucune indication. Ce blocage classique de la communication inter-processus .NET est désormais éliminé : on attache un handler vide (`OutputDataReceived += (_, _) => { };`) et on appelle `BeginOutputReadLine()`. Tant que le tampon est vidé en continu, ffmpeg ne peut plus se bloquer.
+- 📊 **Vrai pourcentage pendant la préparation de l'aperçu**. La signature de `CreateCompatiblePreviewAsync(input, output, IProgress<int>?)` accepte désormais un callback de progression, et la fenêtre de recadrage **et** l'éditeur avancé l'utilisent pour afficher « Préparation de l'aperçu (43%)… » mis à jour en continu — fini le texte figé « Préparation de l'aperçu… » sur une vidéo longue, on voit maintenant que ça avance.
+- ⏱️ **Limite de sécurité de 2 minutes**. Si jamais l'encodage du proxy ne se termine vraiment pas (cas extrême : fichier très volumineux, format inhabituel…), un `Task.WhenAny(waitTask, Task.Delay(timeout))` arrête proprement le process au bout de 2 minutes et lève une exception explicite avec un message clair, plutôt que de rester indéfiniment en attente.
 
-> 💡 Cause technique : l'encodeur `libx264` du proxy imposait `profile:v baseline` et `level 3.0`, deux contraintes pensées pour la compatibilité avec de très vieux appareils. Sur certaines résolutions portrait / fréquences d'images, le débit de macroblocs/seconde dépassait la limite autorisée par le niveau 3.0 et l'encodeur ouvrait la session avec une erreur cryptique. Comme le proxy n'est lu qu'en local par le `MediaElement` Windows (qui décode n'importe quel profil H.264 sans problème), ces contraintes n'avaient aucune raison d'être. On les remplace par `-pix_fmt yuv420p` (qui, lui, est *réellement* nécessaire : le `MediaElement` ne décode pas les autres pixel formats) — sans `-profile:v` ni `-level`, ce qui supprime la limite de débit.
+> 💡 Sous le capot : nouveau paramètre `TimeSpan? timeout = null` sur `RunAsync`, handler stdout pour éviter le deadlock, `IProgress<int>` remonté jusqu'à l'UI via `Progress<int>`.
 
 > ⚠️ Note technique : `VideoEditorWindow.xaml.cs` continue d'utiliser l'alias `using Path = System.IO.Path;` introduit en v1.2.0 pour lever l'ambiguïté avec `System.Windows.Shapes.Path`. La build reste impossible sans cet alias.
 
@@ -54,6 +57,7 @@ Cette version résout un bug que les utilisateurs de vidéos **portrait prises a
 Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes multiples + effets)..."** :
 
 - **Aperçu toujours lisible** grâce au proxy H.264/AAC généré en interne (v1.2.0, durci en v1.4.0) : fonctionne pour **tous** les fichiers, y compris HEVC, ProRes, et les vidéos portrait de téléphone.
+- **Progression visible** pendant la préparation du proxy (v1.5.0) : « Préparation de l'aperçu (43%)… ».
 - **Timeline visuelle** : la vidéo, les segments marqués (en dégradé corail/or) et la tête de lecture sont dessinés sur une vraie barre de montage cliquable.
 - **Coupes multiples** : marquez autant de passages à garder, réorganisez-les, montez-les bout à bout.
 - **Effets** : luminosité, contraste, saturation, rotation (90° / 180° / 270°), Ken Burns et basses.
@@ -68,7 +72,7 @@ Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes mu
 
 ### ✂️ Éditeur de recadrage temporel
 
-Fenêtre dédiée avec aperçu vidéo (lui aussi alimenté par le proxy v1.2.0, durci en v1.4.0) et deux curseurs (début/fin). **v1.3.0** : fonctionne désormais correctement aussi sur les fichiers audio avec pochette intégrée.
+Fenêtre dédiée avec aperçu vidéo (lui aussi alimenté par le proxy v1.2.0, durci en v1.4.0) et deux curseurs (début/fin). **v1.3.0** : pochettes MP3/FLAC supportées. **v1.5.0** : progression visible aussi dans cette fenêtre.
 
 ### 🎨 Mouvement de caméra & réactivité à la musique
 
@@ -129,6 +133,10 @@ dotnet publish ShortsPrep/ShortsPrep.csproj `
 
 Ouvrez aussi `ShortsPrep.csproj` dans Visual Studio 2022 et lancez en F5.
 
+### 🤖 Build automatisée (GitHub Actions)
+
+Une workflow `.github/workflows/build.yml` est fournie : à chaque `push` sur `main`/`master`, ou manuellement via `workflow_dispatch`, un runner Windows compile l'exécutable portable et l'uploade en tant qu'artifact téléchargeable depuis l'onglet **Actions**.
+
 ---
 
 ## ❓ Pourquoi "semi-automatique" ?
@@ -162,7 +170,8 @@ Ce que TrimVideos garantit :
 - [x] ✅ Éditeur vidéo avancé sans perte (coupes multiples, effets, deux modes d'export) — livré en v1.1.0.
 - [x] ✅ Proxy de prévisualisation + timeline visuelle + interface repensée — livré en v1.2.0.
 - [x] ✅ Pochettes intégrées MP3/FLAC + messages d'erreur FFmpeg plus clairs — livré en v1.3.0.
-- [x] ✅ Suppression des contraintes H.264 profile/level du proxy (toutes les vidéos s'ouvrent, y compris portrait téléphone) — **livré en v1.4.0**.
+- [x] ✅ Contraintes H.264 profile/level retirées du proxy (toutes les vidéos s'ouvrent, y compris portrait téléphone) — livré en v1.4.0.
+- [x] ✅ Suppression du risque de blocage silencieux + progression visible + timeout 2 min — **livré en v1.5.0**.
 - [ ] Upload automatique réel vers YouTube Shorts via l'API Google.
 - [ ] Watermark / recadrage ajustable à la souris (aperçu avant traitement).
 - [ ] File d'attente pour traiter plusieurs vidéos d'un coup.

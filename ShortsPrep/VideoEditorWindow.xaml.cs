@@ -62,8 +62,9 @@ public partial class VideoEditorWindow : Window
             TotalTimeText.Text = FormatTime(_durationSeconds);
 
             _proxyPath = Path.Combine(Path.GetTempPath(), $"shortsprep_preview_{Guid.NewGuid():N}.mp4");
-            LoadingText.Text = "Préparation de l'aperçu (peut prendre quelques secondes)...";
-            await _processor.CreateCompatiblePreviewAsync(_sourcePath, _proxyPath);
+            LoadingText.Text = "Préparation de l'aperçu (0%)...";
+            var percent = new Progress<int>(p => LoadingText.Text = $"Préparation de l'aperçu ({p}%)...");
+            await _processor.CreateCompatiblePreviewAsync(_sourcePath, _proxyPath, percent);
 
             Media.Source = new Uri(_proxyPath, UriKind.Absolute);
         }

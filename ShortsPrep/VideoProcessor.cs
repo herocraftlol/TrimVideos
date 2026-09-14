@@ -431,7 +431,8 @@ public class VideoProcessor
     /// Sert uniquement à l'aperçu dans l'éditeur — jamais utilisé pour l'export final,
     /// qui travaille toujours sur le fichier d'origine en pleine qualité.
     /// </summary>
-    public async Task CreateCompatiblePreviewAsync(string inputPath, string outputPath)
+    public async Task CreateCompatiblePreviewAsync(
+        string inputPath, string outputPath, IProgress<int>? percentProgress = null)
     {
         var info = await ProbeAsync(inputPath);
         bool hasVideo = info.Width > 0 && info.Height > 0;
@@ -452,7 +453,7 @@ public class VideoProcessor
             // de l'h264 à la place d'une image de couverture attendue).
             : $"-y -i \"{inputPath}\" -vn -c:a aac -b:a 128k \"{outputPath}\"";
 
-        await RunAsync(FfmpegManager.FfmpegExe, args);
+        await RunAsync(FfmpegManager.FfmpegExe, args, info.DurationSeconds, percentProgress, timeout: TimeSpan.FromMinutes(2));
     }
 
     private static (int Width, int Height) GetDimensions(Orientation orientation) => orientation switch
@@ -565,7 +566,8 @@ public class VideoProcessor
     private static async Task RunAsync(
         string exe, string args,
         double? totalDurationSeconds = null,
-        IProgress<int>? percentProgress = null)
+        IProgress<int>? percentProgress = null,
+        TimeSpan? timeout = null)
     {
         var psi = new ProcessStartInfo(exe, args)
         {
@@ -577,6 +579,12 @@ public class VideoProcessor
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stderrLog = new StringBuilder();
+
+        // IMPORTANT : stdout est redirigé mais ffmpeg n'y écrit normalement rien — il faut
+        // quand même le "vider" en continu (même sans rien en faire), sinon si jamais le
+        // tampon système venait à se remplir, ffmpeg se bloquerait en écriture indéfiniment
+        // (blocage classique .NET : sortie redirigée jamais lue = risque de gel silencieux).
+        process.OutputDataReceived += (_, _) => { };
 
         process.ErrorDataReceived += (_, e) =>
         {
@@ -599,8 +607,25 @@ public class VideoProcessor
         };
 
         process.Start();
+        process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync();
+
+        if (timeout is not null)
+        {
+            var waitTask = process.WaitForExitAsync();
+            var completed = await Task.WhenAny(waitTask, Task.Delay(timeout.Value));
+            if (completed != waitTask)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { /* déjà terminé entre-temps */ }
+                throw new InvalidOperationException(
+                    $"FFmpeg n'a pas terminé après {timeout.Value.TotalSeconds:F0}s (arrêté par sécurité). " +
+                    "Le fichier est peut-être très volumineux/long, ou dans un format inhabituel.");
+            }
+        }
+        else
+        {
+            await process.WaitForExitAsync();
+        }
 
         if (process.ExitCode != 0)
         {
@@ -626,8 +651,12 @@ public class VideoProcessor
             CreateNoWindow = true
         };
         using var process = Process.Start(psi)!;
-        string stdout = await process.StandardOutput.ReadToEndAsync();
+        // Lire stdout et stderr en parallèle (pas l'un après l'autre) : si jamais l'un des
+        // deux tampons se remplissait pendant qu'on attend l'autre, le process se bloquerait.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(stdoutTask, stderrTask);
         await process.WaitForExitAsync();
-        return stdout;
+        return await stdoutTask;
     }
 }

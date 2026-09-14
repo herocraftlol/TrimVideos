@@ -131,7 +131,11 @@ public class BassAnalyzer
             CreateNoWindow = true
         };
         using var process = Process.Start(psi)!;
-        await process.StandardError.ReadToEndAsync();
+        // Les deux tampons en parallèle : lire l'un après l'autre peut bloquer indéfiniment
+        // si l'autre se remplit entre-temps sans être vidé.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(stdoutTask, stderrTask);
         await process.WaitForExitAsync();
     }
 }
