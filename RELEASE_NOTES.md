@@ -1,46 +1,31 @@
-# 🛠️ TrimVideos v1.3.0 — Pochettes intégrées audio, messages FFmpeg plus clairs 🛠️
+# 🎬 TrimVideos v1.4.0 — Aperçu des vidéos portrait sans crash 🎬
 
-Bienvenue dans la v1.3.0 de **TrimVideos** (anciennement ShortsPrep) ! Cette release est plus modeste que les précédentes — deux corrections ciblées sur des points qui fâchaient au quotidien, mais dont l'absence était vraiment pénible.
+Bienvenue dans la v1.4.0 de **TrimVideos** (anciennement ShortsPrep) ! Cette release résout un bug d'encodage discret mais frustrant qui touchait les utilisateurs de vidéos portrait enregistrées au téléphone.
 
 ---
 
-## 🆕 Nouveautés de la v1.3.0
+## 🆕 Nouveautés de la v1.4.0
 
-### 🎵 Bugfix : MP3 / FLAC avec pochette intégrée
+### 🎬 Bugfix : l'aperçu échouait sur certaines vidéos portrait de téléphone
 
-**Symptôme :** un fichier `.mp3` ou `.flac` contenant une pochette (`cover art` embarquée dans le flux lui-même) faisait planter la génération du proxy de prévisualisation. Le mode image + son restait fonctionnel sur ces fichiers, mais la fenêtre de l'éditeur avancé ou celle de recadrage se fermait avec une erreur disgracieuse.
+**Symptôme :** sur certains fichiers vidéo portrait (typiquement ceux filmés à la verticale sur iPhone/Android, mais aussi d'autres cas moins évidents), la génération du proxy de prévisualisation plantait avec une erreur cryptique du type « *x264 [error]: open: Invalid argument* » ou « *could not open encoder* ». Conséquence : pas d'aperçu dans la fenêtre de recadrage ni dans l'éditeur avancé, même si le montage / export final restait possible.
 
-**Cause :** `ffprobe` voit la pochette intégrée comme un flux `video` d'une seule image, marquée `disposition.attached_pic=1`. Pour `ffmpeg`, c'est du flux vidéo « normal », mais quand le proxy essaie d'y appliquer `-vf "scale=480:-2"` puis d'écrire dans un conteneur `.mp4`, le conteneur refuse de stocker une vidéo H.264 à la place d'une image de couverture — d'où l'échec.
+**Cause :** l'encodeur `libx264` du proxy imposait `profile:v baseline -level 3.0`, deux contraintes pensées pour la compatibilité de très vieux appareils. Sur certaines combinaisons résolution / fréquence d'images (typiquement : portrait 9:16 + fréquence d'images élevée = grand nombre de macroblocs/seconde), le débit calculé dépassait la limite autorisée par le niveau 3.0 et l'encodeur refusait carrément d'ouvrir la session d'encodage.
 
-**Correctif v1.3.0 :** dans `VideoProcessor.ProbeAsync`, on détecte maintenant ce cas précis :
+**Correctif v1.4.0 :** les contraintes `-profile:v baseline -level 3.0` sont retirées, et remplacées par `-pix_fmt yuv420p` :
 
-```csharp
-bool isAttachedPic = stream.TryGetProperty("disposition", out var disposition)
-    && disposition.TryGetProperty("attached_pic", out var attachedPic)
-    && attachedPic.GetInt32() == 1;
-
-if (type == "video" && width == 0 && !isAttachedPic)
-    // ... pris comme vidéo réelle
+```diff
+- $"-c:v libx264 -preset ultrafast -crf 28 -profile:v baseline -level 3.0 " +
++ $"-c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p " +
 ```
 
-Les « vidéos » de pochette sont désormais ignorées, et la branche audio (`-vn`) de `CreateCompatiblePreviewAsync` reçoit en plus un `-vn` explicite pour exclure toute pochette intégrée en sortie, ceinture & bretelles.
+**Pourquoi ce changement est correct :**
 
-**Conséquence utilisateur :** un `.mp3` avec cover art s'ouvre maintenant correctement dans l'éditeur et la fenêtre de recadrage. Le fichier reste intact (la pochette n'est jamais modifiée), et le rendu final conserve tout son audio en qualité AAC / FLAC.
+- Le `MediaElement` WPF décode **tous les profils H.264** sans restriction (high, main, baseline…) — il n'a jamais eu besoin qu'on lui force baseline.
+- Le `MediaElement` WPF exige en revanche **`yuv420p`** comme pixel format : un autre pixel format (yuv444p, yuvj420p…) fait apparaître un écran noir sans message d'erreur. C'est la *seule* contrainte vraiment nécessaire.
+- Retirer `-level 3.0` supprime la limite de débit macroblocs/seconde qui faisait planter l'encodeur.
 
-### 📜 Bugfix : messages d'erreur FFmpeg illisibles
-
-**Symptôme :** en cas d'erreur FFmpeg (encode qui plante, codec non disponible, fichier corrompu…), l'exception affichée contenait **toute** la sortie stderr de `ffmpeg` : la longue bannière de version (« `ffmpeg version 7.0.2 Copyright (c) 2000-2024 the FFmpeg developers` »), la liste des options de compilation (« `--enable-gpl --enable-libx264 --enable-libfdk_aac ... »), etc. La vraie cause de l'erreur se noie au milieu de ces 50+ premières lignes techniques sans intérêt pour 99 % des utilisateurs.
-
-**Correctif v1.3.0 :** la sortie est désormais filtrée avec `TakeLast(8)` — on ne garde que les 8 dernières lignes du journal, qui contiennent presque toujours la vraie cause (erreur de codec, fichier introuvable, format non supporté, etc.) :
-
-```csharp
-var lines = stderrLog.ToString()
-    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-var tail = string.Join('\n', lines.TakeLast(8));
-throw new InvalidOperationException($"FFmpeg a échoué (code {process.ExitCode}) :\n{tail}");
-```
-
-**Conséquence utilisateur :** en cas de problème, le message affiché est directement lisible et exploitable — plus besoin de scroller dans un log de 200 lignes pour trouver la vraie raison.
+**Conséquence utilisateur :** le proxy de prévisualisation fonctionne désormais pour **toutes les vidéos**, sans exception. Pas de message d'erreur cryptique, pas d'aperçu noir — la fenêtre de recadrage et l'éditeur avancé affichent le contenu immédiatement.
 
 ---
 
@@ -59,7 +44,8 @@ TrimVideos est un **outil Windows gratuit et open-source** (WPF / .NET 8) qui au
 - **v1.0.0** — Première publication officielle : tronc de rognage, conversion portrait 9:16, gestion de FFmpeg.
 - **v1.1.0** — Éditeur vidéo avancé sans perte : coupes multiples, effets colorimétriques / rotation / Ken Burns, deux modes d'export rapide / précis, sortie `.mp4` ou `.mkv`.
 - **v1.2.0** — Proxy de prévisualisation H.264/AAC (le lecteur Windows intégré affiche enfin l'aperçu sur quasi tous les codecs, y compris HEVC), timeline visuelle dans l'éditeur, interface complètement repensée (palette bruns / corail-or).
-- **v1.3.0** (cette version) — Pochettes audio + messages FFmpeg plus clairs.
+- **v1.3.0** — Pochettes audio MP3/FLAC supportées + messages d'erreur FFmpeg plus lisibles.
+- **v1.4.0** (cette version) — Contraintes H.264 profile/level retirées du proxy, l'aperçu fonctionne désormais sur **toutes** les vidéos (notamment portrait téléphone).
 
 ---
 
@@ -68,15 +54,15 @@ TrimVideos est un **outil Windows gratuit et open-source** (WPF / .NET 8) qui au
 | Fichier | Description |
 |---------|-------------|
 | **`TrimVideos.exe`** | Exécutable portable Windows (zéro installation, ~155 Mo self-contained). |
-| **`TrimVideos-1.3.0-source.zip`** | Code source complet de la version 1.3.0. |
+| **`TrimVideos-1.4.0-source.zip`** | Code source complet de la version 1.4.0. |
 
 ### Utilisation
 
 1. Téléchargez `TrimVideos.exe`.
 2. Lancez-le — aucune installation, c'est portable.
 3. Au premier lancement, FFmpeg (~100 Mo) est téléchargé automatiquement.
-4. Choisissez une vidéo **ou** une image + un son (y compris maintenant un `.mp3` / `.flac` avec pochette intégrée, qui s'ouvre sans planter).
-5. (Optionnel) Cliquez sur **« Éditeur avancé (coupes multiples + effets)... »** si vous voulez monter la vidéo sans perte avant traitement.
+4. Choisissez une vidéo **ou** une image + un son.
+5. (Optionnel) Cliquez sur **« Éditeur avancé (coupes multiples + effets)... »** pour monter la vidéo sans perte avant traitement — l'aperçu s'affiche désormais pour toutes les vidéos.
 6. Cliquez sur **Démarrer** et laissez FFmpeg travailler.
 7. Le fichier est prêt, ouvert automatiquement, et la page d'upload s'ouvre dans votre navigateur. Il ne reste plus qu'à glisser le fichier !
 
@@ -111,13 +97,16 @@ dotnet publish ShortsPrep/ShortsPrep.csproj `
 
 Prérequis : [SDK .NET 8](https://dotnet.microsoft.com/download) (Windows).
 
+> ⚠️ Note technique : `VideoEditorWindow.xaml.cs` utilise `using Path = System.IO.Path;` pour lever l'ambiguïté entre `System.IO.Path` (utilisé par `Path.Combine`, `Path.GetTempPath()`, etc.) et `System.Windows.Shapes.Path` (importé pour `Rectangle` dans la timeline visuelle). Sans cet alias, la build échoue.
+
 ---
 
 ## 🗺️ Feuille de route
 
 - [x] ✅ Éditeur vidéo avancé sans perte (coupes multiples, effets, deux modes d'export) — v1.1.0.
 - [x] ✅ Proxy de prévisualisation + timeline visuelle + interface repensée — v1.2.0.
-- [x] ✅ Correctif pochettes intégrées + messages FFmpeg plus clairs — **v1.3.0**.
+- [x] ✅ Pochettes intégrées + messages FFmpeg plus clairs — v1.3.0.
+- [x] ✅ Contraintes H.264 profile/level retirées du proxy, l'aperçu fonctionne désormais sur toutes les vidéos — **v1.4.0**.
 - [ ] Upload automatique réel vers YouTube Shorts via l'API Google.
 - [ ] Watermark / recadrage ajustable à la souris (aperçu avant traitement).
 - [ ] File d'attente pour traiter plusieurs vidéos d'un coup.

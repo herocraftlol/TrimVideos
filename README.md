@@ -2,7 +2,7 @@
 
 > **TrimVideos** est un outil Windows gratuit et open-source qui vous aide à monter, rogner et préparer vos vidéos pour TikTok, Instagram Reels et YouTube Shorts — sans perte de qualité, en quelques clics, et avec un aperçu toujours lisible même pour les codecs exotiques (HEVC, etc.).
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
 ![Plateforme](https://img.shields.io/badge/platform-Windows-0078d4.svg)
 ![.NET](https://img.shields.io/badge/.NET-8.0--windows-purple.svg)
 ![Licence](https://img.shields.io/badge/license-MIT-green.svg)
@@ -22,14 +22,13 @@ TrimVideos vous simplifie tout le pipeline de publication d'une vidéo courte su
 
 ---
 
-## 🆕 Quoi de neuf dans la v1.3.0 ?
+## 🆕 Quoi de neuf dans la v1.4.0 ?
 
-Cette version corrige deux bugs spécifiques mais pénibles au quotidien :
+Cette version résout un bug que les utilisateurs de vidéos **portrait prises au téléphone** pouvaient rencontrer avec la v1.3.0 :
 
-- 🎵 **MP3 / FLAC avec pochette intégrée ne font plus planter l'aperçu**. Un fichier audio avec une image de couverture (cover art) est détecté par `ffprobe` comme ayant un « flux vidéo » (l'image elle-même, marquée `disposition.attached_pic=1`). Auparavant, ça faisait planter la génération du proxy de prévisualisation, parce que le conteneur `.mp4` refuse de stocker de la vidéo H.264 à la place d'une image de couverture. C'est maintenant détecté et ignoré correctement dans `VideoProcessor`.
-- 📜 **Messages d'erreur FFmpeg plus lisibles**. En cas d'échec d'une opération `ffmpeg`, seules les **8 dernières lignes** du journal sont affichées (au lieu de toute la bannière de version / options de compilation, illisible et sans intérêt). En pratique, c'est toujours dans la queue du log que se trouve la vraie cause, donc le diagnostic est plus rapide.
+- 🎬 **Le proxy de prévisualisation ne s'ouvre plus** sur certaines vidéos portrait (typiquement des vidéos iPhone / Android filmées à la verticale). Dans la v1.3.0, sur ces fichiers-là, l'encodeur H.264 du proxy refusait tout simplement de s'ouvrir. Avec la v1.4.0, l'aperçu fonctionne pour **toutes les vidéos**.
 
-> 💡 Sous le capot : nouvelle détection `isAttachedPic` dans `VideoProcessor.ProbeAsync` (flux `video` avec `width=0` + `disposition.attached_pic=1` est désormais ignoré), et nouveau `-vn` explicite sur la branche audio de `CreateCompatiblePreviewAsync` pour exclure toute pochette intégrée. Côté messages, le `throw new InvalidOperationException(...)` filtre la sortie via `TakeLast(8)`.
+> 💡 Cause technique : l'encodeur `libx264` du proxy imposait `profile:v baseline` et `level 3.0`, deux contraintes pensées pour la compatibilité avec de très vieux appareils. Sur certaines résolutions portrait / fréquences d'images, le débit de macroblocs/seconde dépassait la limite autorisée par le niveau 3.0 et l'encodeur ouvrait la session avec une erreur cryptique. Comme le proxy n'est lu qu'en local par le `MediaElement` Windows (qui décode n'importe quel profil H.264 sans problème), ces contraintes n'avaient aucune raison d'être. On les remplace par `-pix_fmt yuv420p` (qui, lui, est *réellement* nécessaire : le `MediaElement` ne décode pas les autres pixel formats) — sans `-profile:v` ni `-level`, ce qui supprime la limite de débit.
 
 > ⚠️ Note technique : `VideoEditorWindow.xaml.cs` continue d'utiliser l'alias `using Path = System.IO.Path;` introduit en v1.2.0 pour lever l'ambiguïté avec `System.Windows.Shapes.Path`. La build reste impossible sans cet alias.
 
@@ -54,7 +53,7 @@ Cette version corrige deux bugs spécifiques mais pénibles au quotidien :
 
 Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes multiples + effets)..."** :
 
-- **Aperçu toujours lisible** grâce au proxy H.264/AAC généré en interne (v1.2.0) : fonctionne même pour les fichiers en HEVC, ProRes, etc.
+- **Aperçu toujours lisible** grâce au proxy H.264/AAC généré en interne (v1.2.0, durci en v1.4.0) : fonctionne pour **tous** les fichiers, y compris HEVC, ProRes, et les vidéos portrait de téléphone.
 - **Timeline visuelle** : la vidéo, les segments marqués (en dégradé corail/or) et la tête de lecture sont dessinés sur une vraie barre de montage cliquable.
 - **Coupes multiples** : marquez autant de passages à garder, réorganisez-les, montez-les bout à bout.
 - **Effets** : luminosité, contraste, saturation, rotation (90° / 180° / 270°), Ken Burns et basses.
@@ -69,7 +68,7 @@ Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes mu
 
 ### ✂️ Éditeur de recadrage temporel
 
-Fenêtre dédiée avec aperçu vidéo (lui aussi alimenté par le proxy v1.2.0) et deux curseurs (début/fin). **v1.3.0** : fonctionne désormais correctement aussi sur les fichiers audio avec pochette intégrée.
+Fenêtre dédiée avec aperçu vidéo (lui aussi alimenté par le proxy v1.2.0, durci en v1.4.0) et deux curseurs (début/fin). **v1.3.0** : fonctionne désormais correctement aussi sur les fichiers audio avec pochette intégrée.
 
 ### 🎨 Mouvement de caméra & réactivité à la musique
 
@@ -154,7 +153,7 @@ Ce que TrimVideos garantit :
 - ✅ L'audio intégré dans le MP4 envoyé aux plateformes est encodé en **AAC 320 kbps** (maximum utile).
 - ✅ Le fichier maître `.mkv` (FLAC + CRF 0) sert d'archive personnelle sans aucune perte.
 - ✅ L'**éditeur avancé** préserve la qualité d'origine dans les deux modes d'export.
-- ✅ Le **proxy de prévisualisation** (v1.2.0) reste local et temporaire, supprimé à la fermeture de la fenêtre.
+- ✅ Le **proxy de prévisualisation** (v1.2.0 → v1.4.0) reste local et temporaire, supprimé à la fermeture de la fenêtre.
 
 ---
 
@@ -162,7 +161,8 @@ Ce que TrimVideos garantit :
 
 - [x] ✅ Éditeur vidéo avancé sans perte (coupes multiples, effets, deux modes d'export) — livré en v1.1.0.
 - [x] ✅ Proxy de prévisualisation + timeline visuelle + interface repensée — livré en v1.2.0.
-- [x] ✅ Correctif pochettes intégrées MP3/FLAC + messages d'erreur FFmpeg plus lisibles — **livré en v1.3.0**.
+- [x] ✅ Pochettes intégrées MP3/FLAC + messages d'erreur FFmpeg plus clairs — livré en v1.3.0.
+- [x] ✅ Suppression des contraintes H.264 profile/level du proxy (toutes les vidéos s'ouvrent, y compris portrait téléphone) — **livré en v1.4.0**.
 - [ ] Upload automatique réel vers YouTube Shorts via l'API Google.
 - [ ] Watermark / recadrage ajustable à la souris (aperçu avant traitement).
 - [ ] File d'attente pour traiter plusieurs vidéos d'un coup.

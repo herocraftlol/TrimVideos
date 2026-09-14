@@ -437,8 +437,14 @@ public class VideoProcessor
         bool hasVideo = info.Width > 0 && info.Height > 0;
 
         var args = hasVideo
+            // Pas de -profile/-level : ces contraintes (pensées pour la compatibilité de très
+            // vieux appareils) faisaient échouer l'ouverture de l'encodeur sur certaines
+            // résolutions/fréquences d'images (ex : vidéos portrait de téléphone), le calcul de
+            // débit macroblocs/seconde dépassant la limite autorisée par le niveau imposé.
+            // Ce proxy n'est utilisé qu'en local par le lecteur Windows, qui décode très bien
+            // n'importe quel profil H.264 sans restriction : ces contraintes n'avaient pas lieu d'être.
             ? $"-y -i \"{inputPath}\" -vf \"scale=480:-2\" " +
-              $"-c:v libx264 -preset ultrafast -crf 28 -profile:v baseline -level 3.0 " +
+              $"-c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p " +
               $"-c:a aac -b:a 128k -movflags +faststart \"{outputPath}\""
             // Fichier audio seul (pas de vrai flux vidéo) : -vn exclut explicitement toute
             // pochette intégrée (cover art), que ffmpeg reprendrait sinon par défaut même
