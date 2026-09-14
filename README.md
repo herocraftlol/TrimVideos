@@ -1,8 +1,8 @@
 # 🎬 TrimVideos (ShortsPrep)
 
-> **TrimVideos** est un outil Windows gratuit et open-source qui vous aide à préparer, monter et rogner vos vidéos pour TikTok, Instagram Reels et YouTube Shorts — sans perte de qualité, en quelques clics.
+> **TrimVideos** est un outil Windows gratuit et open-source qui vous aide à monter, rogner et préparer vos vidéos pour TikTok, Instagram Reels et YouTube Shorts — sans perte de qualité, en quelques clics, et avec un aperçu toujours lisible même pour les codecs exotiques (HEVC, etc.).
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Plateforme](https://img.shields.io/badge/platform-Windows-0078d4.svg)
 ![.NET](https://img.shields.io/badge/.NET-8.0--windows-purple.svg)
 ![Licence](https://img.shields.io/badge/license-MIT-green.svg)
@@ -22,19 +22,17 @@ TrimVideos vous simplifie tout le pipeline de publication d'une vidéo courte su
 
 ---
 
-## 🆕 Quoi de neuf dans la v1.1.0 ?
+## 🆕 Quoi de neuf dans la v1.2.0 ?
 
-Cette version ajoute un **éditeur vidéo avancé sans perte** complet :
+Cette version résout le gros point noir du lecteur Windows intégré et offre une expérience visuelle complètement repensée :
 
-- **Coupes multiples** : marquez autant de passages que vous voulez dans la vidéo (boutons "Marquer début" / "Marquer fin" / "+ Ajouter"), réorganisez-les à votre guise, et ils seront collés bout à bout dans l'ordre choisi.
-- **Effets colorimétriques** : luminosité, contraste, saturation, rotation (90° / 180° / 270°), tous réglables par sliders.
-- **Mouvement de caméra + réactivité aux basses** : les effets Ken Burns et basses vus dans le mode image + son sont désormais disponibles aussi dans l'éditeur.
-- **Deux modes d'export** :
-  - **Rapide (par défaut)** : copie de flux pure, zéro ré-encodage, donc zéro perte garantie — comme l'outil open-source *LosslessCut*. Les coupes sont alignées sur l'image clé la plus proche (comportement standard). Sortie `.mp4`, instantané.
-  - **Précis (sans perte)** : coupes exactes à la frame près, effets appliqués, vidéo CRF 0 + audio FLAC — 100 % sans perte mathématique, mais fichiers plus volumineux. Sortie `.mkv`.
-- Bascule **automatique vers le mode précis** dès qu'un effet (colorimétrie, rotation, mouvement de caméra ou basses) est actif : une copie de flux ne peut pas être filtrée.
+- 🛠️ **Correctif du bug "codec non supporté"** : un **proxy de prévisualisation** (H.264 baseline + AAC, basse résolution) est désormais généré en interne avant l'affichage. Résultat : **l'aperçu fonctionne pour quasiment tous les fichiers**, y compris HEVC, ProRes, et autres codecs exotiques que le lecteur Windows intégré ne sait pas décoder nativement. Le proxy ne sert qu'à la prévisualisation — l'export final travaille toujours sur le fichier source en pleine qualité.
+- 🎞️ **Timeline visuelle dans l'éditeur avancé** : une vraie barre de montage dessine la vidéo, vos segments (en dégradé corail/or) et la tête de lecture. Cliquable, comme dans un logiciel de montage classique.
+- 🎨 **Interface repensée** : nouvelle palette chaleureuse (bruns / anthracite + accent corail-or), sections numérotées en cartes, en-tête avec icônes. Plus lisible, plus intuitive.
+- 📐 **Fenêtres redimensionnées** : éditeur avancé et fenêtre de recadrage plus spacieux pour laisser respirer les contrôles et la timeline.
+- 🧹 **Nettoyage automatique des fichiers proxy temporaires** à la fermeture des fenêtres d'aperçu — aucun résidu sur votre disque.
 
-> 💡 L'éditeur reste entièrement sans perte, quel que soit le mode : vous ne perdez jamais la qualité d'origine.
+> 💡 Sous le capot : nouvelle méthode `CreateCompatiblePreviewAsync` dans `VideoProcessor`, refonte complète de `VideoEditorWindow` (UI + code-behind avec dessin vectoriel via `System.Windows.Shapes`), et adaptation de `TrimWindow` au même système de proxy.
 
 ---
 
@@ -43,7 +41,7 @@ Cette version ajoute un **éditeur vidéo avancé sans perte** complet :
 1. Téléchargez la dernière version depuis la page [**Releases**](../../releases).
 2. Lancez **`TrimVideos.exe`** — aucune installation requise, c'est portable.
 3. Choisissez une vidéo **ou** une image + un son.
-4. (Optionnel) Cliquez sur **"Éditeur avancé (coupes multiples + effets)..."** pour monter votre vidéo sans perte avant traitement.
+4. (Optionnel) Cliquez sur **"Éditeur avancé (coupes multiples + effets)..."** pour monter votre vidéo sans perte avant traitement — la timeline visuelle vous guide.
 5. Cliquez sur **Démarrer** et laissez FFmpeg faire le travail.
 6. Le fichier est prêt, ouvert automatiquement, et la page d'upload s'ouvre dans votre navigateur.
 
@@ -53,16 +51,17 @@ Cette version ajoute un **éditeur vidéo avancé sans perte** complet :
 
 ## 🔧 Fonctionnalités détaillées
 
-### 🎬 Éditeur vidéo avancé sans perte (NOUVEAU v1.1.0)
+### 🎬 Éditeur vidéo avancé sans perte
 
 Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes multiples + effets)..."** :
 
-- **Aperçu complet** de la vidéo importée avec lecture, pause, et scrubber de défilement.
-- **Marquage multi-segments** : "Marquer début" → "Marquer fin" → "+ Ajouter" pour empiler les passages à garder. Réorganisables (monter / descendre) et supprimables individuellement.
+- **Aperçu toujours lisible** grâce au proxy H.264/AAC généré en interne : fonctionne même pour les fichiers en HEVC ou codecs exotiques.
+- **Timeline visuelle** : la vidéo, les segments marqués (en dégradé corail/or) et la tête de lecture sont dessinés sur une vraie barre de montage cliquable, façon logiciel de montage classique.
+- **Coupes multiples** : "Marquer début" → "Marquer fin" → "+ Ajouter" pour empiler les passages à garder. Réorganisables (monter / descendre) et supprimables individuellement.
 - **Effets disponibles** : luminosité (slider -1..+1), contraste (0..2), saturation (0..3), rotation (90° / 180° / 270°), plus le mouvement de caméra Ken Burns et la réactivité aux basses déjà présents dans le mode image + son.
 - **Export rapide (par défaut)** : coupe + recolle par copie de flux pure — zéro ré-encodage, donc zéro perte garantie. Sortie en `.mp4` (codec audio d'origine conservé tel quel). Coupes alignées sur l'image clé la plus proche.
 - **Export précis** : coupes exactes à la frame près, ré-encodage vidéo CRF 0 + audio FLAC, conteneur `.mkv`. Activé automatiquement dès qu'un effet est appliqué (une copie de flux ne peut pas être filtrée).
-- Gestion propre d'un échec d'aperçu : si le codec n'est pas lu par le lecteur Windows intégré, un message clair l'indique et le montage / export reste possible sans prévisualisation.
+- **Overlay de chargement** pendant la préparation du proxy, avec message clair si l'aperçu n'est pas disponible.
 
 ### 📥 Deux modes d'entrée
 
@@ -72,14 +71,14 @@ Une fenêtre dédiée accessible depuis le bouton **"Éditeur avancé (coupes mu
 
 ### ✂️ Éditeur de recadrage temporel
 
-Une fenêtre dédiée avec aperçu vidéo et deux curseurs (début/fin) pour sélectionner précisément la portion à conserver. Fonctionne aussi bien pour la vidéo que pour l'audio en mode image+son. Si l'aperçu ne s'affiche pas (codec non lu par le lecteur Windows intégré), un message clair l'indique.
+Une fenêtre dédiée avec aperçu vidéo (lui aussi alimenté par le proxy v1.2.0, donc lisible dans presque tous les cas) et deux curseurs (début/fin) pour sélectionner précisément la portion à conserver. Fonctionne aussi bien pour la vidéo que pour l'audio en mode image+son. Si l'aperçu ne s'affiche pas malgré tout, un message clair l'indique et la sélection reste utilisable à partir de la durée détectée.
 
 ### 🎨 Mouvement de caméra & réactivité à la musique (mode image + son)
 
 - **Ken Burns** : zoom lent continu + léger travelling, intensité réglable.
 - **Réactif aux basses** : le zoom pulse sur les basses/kicks détectés dans l'audio (analyse d'énergie de la bande ~80 Hz par fenêtres de 50 ms, détection de pics). Sensibilité réglable.
 - Les deux effets se combinent. Techniquement : l'image est mise à l'échelle avec 30 % de marge, puis zoomée/déplacée dynamiquement par des expressions FFmpeg évaluées image par image, avant un recadrage final — jamais de bord vide visible, même en mouvement.
-- **Ces effets s'appliquent aussi à une vidéo existante** (mode vidéo, portrait ou paysage) — y compris dans le nouvel éditeur avancé.
+- **Ces effets s'appliquent aussi à une vidéo existante** (mode vidéo, portrait ou paysage) — y compris dans l'éditeur avancé.
 
 ### 🎚️ Trois niveaux de qualité vidéo
 
@@ -160,13 +159,15 @@ Ce que TrimVideos garantit :
 - ✅ La copie **WAV/FLAC extraite en local est bit-exacte** par rapport à l'original — c'est votre version "maître" à conserver (DAW, SoundCloud qui accepte le FLAC sans transcodage destructeur imposé, etc.).
 - ✅ L'audio intégré dans le MP4 envoyé aux plateformes est encodé en **AAC 320 kbps** (maximum utile — au-delà l'oreille ne fait plus la différence et les plateformes replafonnent de toute façon).
 - ✅ Le fichier maître `.mkv` (FLAC + CRF 0) sert d'archive personnelle sans aucune perte, ou pour être ré-encodé plus tard sans repartir de zéro.
-- ✅ Le nouvel **éditeur avancé (v1.1.0)** préserve la qualité d'origine dans les deux modes d'export (rapide par copie de flux, ou précis via CRF 0 + FLAC).
+- ✅ L'**éditeur avancé** préserve la qualité d'origine dans les deux modes d'export (rapide par copie de flux, ou précis via CRF 0 + FLAC).
+- ✅ Le **proxy de prévisualisation** (v1.2.0) reste local et temporaire : il est supprimé automatiquement à la fermeture de la fenêtre, et l'export final n'utilise que le fichier source en pleine qualité.
 
 ---
 
 ## 🗺️ Feuille de route
 
 - [x] ✅ **Éditeur vidéo avancé sans perte** (coupes multiples, effets, deux modes d'export) — livré en v1.1.0.
+- [x] ✅ **Proxy de prévisualisation** + **timeline visuelle** + **interface repensée** — livré en v1.2.0.
 - [ ] Upload automatique réel vers YouTube Shorts via l'API Google.
 - [ ] Watermark / recadrage ajustable à la souris (aperçu avant traitement).
 - [ ] File d'attente pour traiter plusieurs vidéos d'un coup.

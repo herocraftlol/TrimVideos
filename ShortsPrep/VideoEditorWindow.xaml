@@ -1,135 +1,170 @@
 <Window x:Class="ShortsPrep.VideoEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Éditeur vidéo sans perte" Height="820" Width="1000"
+        Title="Éditeur vidéo sans perte" Height="880" Width="1100"
         Background="{StaticResource BgBrush}" FontFamily="Segoe UI"
         WindowStartupLocation="CenterOwner">
     <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
-    <Grid Margin="20">
+    <Grid Margin="22">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="340"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="360"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Éditeur vidéo sans perte"
-                   Foreground="{StaticResource TextBrush}" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-
-        <!-- Aperçu -->
-        <Border Grid.Row="1" Grid.Column="0" Background="Black" CornerRadius="6" Margin="0,0,12,0">
-            <MediaElement x:Name="Media" LoadedBehavior="Manual" UnloadedBehavior="Manual"
-                          Stretch="Uniform" MediaOpened="Media_MediaOpened" MediaFailed="Media_MediaFailed"/>
-        </Border>
-
-        <!-- Panneau effets -->
-        <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Top">
-            <TextBlock Text="Effets" Foreground="{StaticResource TextBrush}" FontWeight="Bold" Margin="0,0,0,8"/>
-
-            <TextBlock Text="Luminosité" Foreground="{StaticResource SubTextBrush}"/>
-            <Slider x:Name="BrightnessSlider" Minimum="-50" Maximum="50" Value="0"/>
-
-            <TextBlock Text="Contraste" Foreground="{StaticResource SubTextBrush}" Margin="0,6,0,0"/>
-            <Slider x:Name="ContrastSlider" Minimum="50" Maximum="150" Value="100"/>
-
-            <TextBlock Text="Saturation" Foreground="{StaticResource SubTextBrush}" Margin="0,6,0,0"/>
-            <Slider x:Name="SaturationSlider" Minimum="0" Maximum="200" Value="100"/>
-
-            <TextBlock Text="Rotation" Foreground="{StaticResource SubTextBrush}" Margin="0,6,0,4"/>
-            <ComboBox x:Name="RotationCombo" SelectedIndex="0">
-                <ComboBoxItem Content="Aucune"/>
-                <ComboBoxItem Content="90° horaire"/>
-                <ComboBoxItem Content="180°"/>
-                <ComboBoxItem Content="90° anti-horaire"/>
-            </ComboBox>
-
-            <Separator Margin="0,12"/>
-            <CheckBox x:Name="KenBurnsCheck" Content="Mouvement de caméra (Ken Burns)"
-                      Foreground="{StaticResource TextBrush}" Checked="MotionCheck_Changed" Unchecked="MotionCheck_Changed"/>
-            <StackPanel x:Name="KenBurnsIntensityPanel" Margin="16,4,0,4" Visibility="Collapsed">
-                <TextBlock Text="Intensité" Foreground="{StaticResource SubTextBrush}"/>
-                <Slider x:Name="KenBurnsIntensitySlider" Minimum="0" Maximum="100" Value="50"/>
-            </StackPanel>
-            <CheckBox x:Name="BassReactiveCheck" Content="Réagit aux basses"
-                      Foreground="{StaticResource TextBrush}" Checked="MotionCheck_Changed" Unchecked="MotionCheck_Changed"/>
-            <StackPanel x:Name="BassSensitivityPanel" Margin="16,4,0,4" Visibility="Collapsed">
-                <TextBlock Text="Sensibilité" Foreground="{StaticResource SubTextBrush}"/>
-                <Slider x:Name="BassSensitivitySlider" Minimum="0" Maximum="100" Value="60"/>
-            </StackPanel>
-
-            <Separator Margin="0,12"/>
-            <TextBlock Text="Mode d'export" Foreground="{StaticResource TextBrush}" FontWeight="Bold" Margin="0,0,0,6"/>
-            <RadioButton x:Name="FastModeRadio" Content="Rapide (copie de flux, coupes ~image clé)"
-                         GroupName="ExportMode" Foreground="{StaticResource TextBrush}" IsChecked="True"
-                         Checked="ExportMode_Changed"/>
-            <RadioButton x:Name="PreciseModeRadio" Content="Précis (ré-encodage 100% sans perte, plus lent)"
-                         GroupName="ExportMode" Foreground="{StaticResource TextBrush}" Margin="0,4,0,0"
-                         Checked="ExportMode_Changed"/>
-            <TextBlock x:Name="ExportModeHint" Text="" Foreground="{StaticResource SubTextBrush}"
-                       FontStyle="Italic" TextWrapping="Wrap" Margin="0,6,0,0"/>
-        </StackPanel>
-
-        <!-- Transport / marquage de segments -->
-        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0">
-            <StackPanel Orientation="Horizontal">
-                <Button x:Name="PlayPauseButton" Content="Lecture/Pause" Padding="10,6" Click="PlayPauseButton_Click" Margin="0,0,10,0"/>
-                <TextBlock x:Name="CurrentTimeText" Text="00:00.0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Width="70"/>
-                <Slider x:Name="ScrubberSlider" Width="380" Minimum="0" Maximum="1" ValueChanged="ScrubberSlider_ValueChanged"/>
-                <TextBlock x:Name="TotalTimeText" Text="00:00.0" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <Button x:Name="MarkStartButton" Content="Marquer début" Padding="10,6" Click="MarkStartButton_Click" Margin="0,0,8,0"/>
-                <TextBlock x:Name="MarkStartText" Text="Début : -" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <Button x:Name="MarkEndButton" Content="Marquer fin" Padding="10,6" Click="MarkEndButton_Click" Margin="0,0,8,0"/>
-                <TextBlock x:Name="MarkEndText" Text="Fin : -" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <Button x:Name="AddSegmentButton" Content="+ Ajouter le segment à garder" Padding="10,6"
-                        Background="{StaticResource AccentBrush}" Foreground="White" Click="AddSegmentButton_Click"/>
-            </StackPanel>
-        </StackPanel>
-
-        <!-- Liste des segments -->
-        <Border Grid.Row="3" Grid.ColumnSpan="2" Background="{StaticResource PanelBrush}" CornerRadius="8"
-                Padding="12" Margin="0,12,0,0">
+        <!-- En-tête -->
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,16">
+            <TextBlock Text="🎬" FontSize="24" Margin="0,0,10,0"/>
             <StackPanel>
-                <TextBlock Text="Segments à garder (dans l'ordre du montage final)" Foreground="{StaticResource TextBrush}"
-                           FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <ListBox x:Name="SegmentsList" Height="120" Background="Transparent" BorderThickness="0"/>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Content="Monter" Padding="10,4" Margin="0,0,8,0" Click="MoveSegmentUp_Click"/>
-                    <Button Content="Descendre" Padding="10,4" Margin="0,0,8,0" Click="MoveSegmentDown_Click"/>
-                    <Button Content="Supprimer" Padding="10,4" Click="RemoveSegmentButton_Click"/>
+                <TextBlock Text="Éditeur vidéo" Foreground="{StaticResource TextBrush}" FontSize="20" FontWeight="Bold"/>
+                <TextBlock Text="Coupes, effets, export sans perte" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Colonne gauche : aperçu + timeline + segments -->
+        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,14,0">
+
+            <Border Style="{StaticResource SectionCard}" Padding="0" ClipToBounds="True">
+                <Grid Height="380">
+                    <MediaElement x:Name="Media" LoadedBehavior="Manual" UnloadedBehavior="Manual"
+                                  Stretch="Uniform" MediaOpened="Media_MediaOpened" MediaFailed="Media_MediaFailed"/>
+                    <Border x:Name="LoadingOverlay" Background="#CC1A1512">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="⏳" FontSize="28" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="LoadingText" Text="Préparation de l'aperçu..."
+                                       Foreground="{StaticResource TextBrush}" Margin="0,8,0,0"/>
+                            <TextBlock Text="(l'export utilise toujours le fichier d'origine en pleine qualité)"
+                                       Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Transport -->
+            <StackPanel Orientation="Horizontal" Margin="4,0,0,10">
+                <Button x:Name="PlayPauseButton" Content="▶" Width="42" Height="36" FontSize="14"
+                        Style="{StaticResource SecondaryButton}" Click="PlayPauseButton_Click" Margin="0,0,10,0"/>
+                <TextBlock x:Name="CurrentTimeText" Text="00:00.0" Foreground="{StaticResource TextBrush}"
+                           VerticalAlignment="Center" Width="60" FontFamily="Consolas"/>
+                <TextBlock Text="/" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock x:Name="TotalTimeText" Text="00:00.0" Foreground="{StaticResource SubTextBrush}"
+                           VerticalAlignment="Center" FontFamily="Consolas"/>
+            </StackPanel>
+
+            <!-- Timeline visuelle -->
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="TIMELINE" Style="{StaticResource SectionTitle}"/>
+                    <Border Background="#1F1815" CornerRadius="6" Height="64" ClipToBounds="True">
+                        <Canvas x:Name="TimelineCanvas" Background="Transparent"
+                                MouseLeftButtonDown="TimelineCanvas_MouseDown"
+                                MouseMove="TimelineCanvas_MouseMove" MouseLeftButtonUp="TimelineCanvas_MouseUp"
+                                SizeChanged="TimelineCanvas_SizeChanged"/>
+                    </Border>
+                    <TextBlock Text="Clique sur la timeline pour te déplacer. Les bandes dorées sont les segments déjà ajoutés."
+                               Foreground="{StaticResource SubTextBrush}" FontSize="11" FontStyle="Italic" Margin="0,8,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="✂  Marquer début" Style="{StaticResource SecondaryButton}"
+                                Click="MarkStartButton_Click" Margin="0,0,8,0"/>
+                        <Button Content="✂  Marquer fin" Style="{StaticResource SecondaryButton}"
+                                Click="MarkEndButton_Click" Margin="0,0,16,0"/>
+                        <TextBlock x:Name="MarkRangeText" Text="Aucun point marqué"
+                                   Foreground="{StaticResource AccentGoldBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                        <Button Content="+ Ajouter le segment" Style="{StaticResource PrimaryButton}"
+                                Click="AddSegmentButton_Click"/>
+                    </StackPanel>
                 </StackPanel>
+            </Border>
+
+            <!-- Segments -->
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="SEGMENTS À GARDER (ordre du montage final)" Style="{StaticResource SectionTitle}"/>
+                    <ListBox x:Name="SegmentsList" Height="110" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource TextBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="▲ Monter" Style="{StaticResource SecondaryButton}" Click="MoveSegmentUp_Click" Margin="0,0,8,0"/>
+                        <Button Content="▼ Descendre" Style="{StaticResource SecondaryButton}" Click="MoveSegmentDown_Click" Margin="0,0,8,0"/>
+                        <Button Content="🗑 Supprimer" Style="{StaticResource SecondaryButton}" Click="RemoveSegmentButton_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Colonne droite : effets -->
+        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource SectionCard}" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="COULEUR" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="Luminosité" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                <Slider x:Name="BrightnessSlider" Minimum="-50" Maximum="50" Value="0" Margin="0,2,0,8"/>
+                <TextBlock Text="Contraste" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                <Slider x:Name="ContrastSlider" Minimum="50" Maximum="150" Value="100" Margin="0,2,0,8"/>
+                <TextBlock Text="Saturation" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                <Slider x:Name="SaturationSlider" Minimum="0" Maximum="200" Value="100" Margin="0,2,0,8"/>
+                <TextBlock Text="Rotation" Foreground="{StaticResource SubTextBrush}" FontSize="12" Margin="0,0,0,4"/>
+                <ComboBox x:Name="RotationCombo" SelectedIndex="0" Margin="0,0,0,4">
+                    <ComboBoxItem Content="Aucune"/>
+                    <ComboBoxItem Content="90° horaire"/>
+                    <ComboBoxItem Content="180°"/>
+                    <ComboBoxItem Content="90° anti-horaire"/>
+                </ComboBox>
+
+                <Separator Margin="0,14" Background="{StaticResource BorderBrush2}"/>
+                <TextBlock Text="MOUVEMENT" Style="{StaticResource SectionTitle}"/>
+                <CheckBox x:Name="KenBurnsCheck" Content="Mouvement de caméra (Ken Burns)"
+                          Checked="MotionCheck_Changed" Unchecked="MotionCheck_Changed"/>
+                <StackPanel x:Name="KenBurnsIntensityPanel" Margin="18,4,0,6" Visibility="Collapsed">
+                    <TextBlock Text="Intensité" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                    <Slider x:Name="KenBurnsIntensitySlider" Minimum="0" Maximum="100" Value="50"/>
+                </StackPanel>
+                <CheckBox x:Name="BassReactiveCheck" Content="Réagit aux basses"
+                          Checked="MotionCheck_Changed" Unchecked="MotionCheck_Changed"/>
+                <StackPanel x:Name="BassSensitivityPanel" Margin="18,4,0,4" Visibility="Collapsed">
+                    <TextBlock Text="Sensibilité" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                    <Slider x:Name="BassSensitivitySlider" Minimum="0" Maximum="100" Value="60"/>
+                </StackPanel>
+
+                <Separator Margin="0,14" Background="{StaticResource BorderBrush2}"/>
+                <TextBlock Text="EXPORT" Style="{StaticResource SectionTitle}"/>
+                <RadioButton x:Name="FastModeRadio" Content="Rapide (copie de flux)"
+                             GroupName="ExportMode" IsChecked="True" Checked="ExportMode_Changed" Margin="0,0,0,6"/>
+                <RadioButton x:Name="PreciseModeRadio" Content="Précis (100% sans perte)"
+                             GroupName="ExportMode" Checked="ExportMode_Changed"/>
+                <TextBlock x:Name="ExportModeHint" Text="" Foreground="{StaticResource SubTextBrush}"
+                           FontStyle="Italic" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>
         </Border>
 
-        <!-- Journal + actions -->
-        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,12,0,0">
-            <Border Height="140" Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="10">
-                <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="LogText" Foreground="{StaticResource SubTextBrush}" TextWrapping="Wrap" FontFamily="Consolas"/>
-                </ScrollViewer>
-            </Border>
-            <Grid Margin="0,8,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <ProgressBar x:Name="ProgressBarCtrl" Grid.Column="0" Height="10" Minimum="0" Maximum="100"
-                             Visibility="Collapsed" Foreground="{StaticResource AccentBrush}"/>
-                <TextBlock x:Name="ProgressPercentText" Grid.Column="1" Text="" Foreground="{StaticResource TextBrush}"
+        <!-- Journal -->
+        <Border Grid.Row="2" Grid.ColumnSpan="2" Style="{StaticResource SectionCard}" Height="130">
+            <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="LogText" Foreground="{StaticResource SubTextBrush}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Actions -->
+        <Grid Grid.Row="3" Grid.ColumnSpan="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ProgressBar x:Name="ProgressBarCtrl" Width="260" Height="10" Minimum="0" Maximum="100"
+                             Visibility="Collapsed" Foreground="{StaticResource AccentGoldBrush}"/>
+                <TextBlock x:Name="ProgressPercentText" Text="" Foreground="{StaticResource TextBrush}"
                            FontWeight="Bold" Margin="10,0,0,0" Visibility="Collapsed"/>
-            </Grid>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                <Button Content="Fermer" Padding="14,8" Margin="0,0,10,0" Click="CloseButton_Click"/>
-                <Button x:Name="ExportButton" Content="Exporter..." Padding="20,10" FontWeight="Bold"
-                        Background="{StaticResource AccentBrush}" Foreground="White" Click="ExportButton_Click"/>
             </StackPanel>
-        </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="Fermer" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Click="CloseButton_Click"/>
+                <Button x:Name="ExportButton" Content="Exporter..." Style="{StaticResource PrimaryButton}" Click="ExportButton_Click"/>
+            </StackPanel>
+        </Grid>
     </Grid>
     </ScrollViewer>
 </Window>

@@ -415,6 +415,29 @@ public class VideoProcessor
         }
     }
 
+    /// <summary>
+    /// Génère un proxy de prévisualisation universellement compatible (H.264 baseline
+    /// + AAC, 480p, encodage ultra-rapide) à partir de n'importe quelle source, même
+    /// dans un codec que le lecteur intégré à Windows ne sait pas lire (HEVC, etc.).
+    /// Sert uniquement à l'aperçu dans l'éditeur — jamais utilisé pour l'export final,
+    /// qui travaille toujours sur le fichier d'origine en pleine qualité.
+    /// </summary>
+    public async Task CreateCompatiblePreviewAsync(string inputPath, string outputPath)
+    {
+        var info = await ProbeAsync(inputPath);
+        bool hasVideo = info.Width > 0 && info.Height > 0;
+
+        var args = hasVideo
+            ? $"-y -i \"{inputPath}\" -vf \"scale=480:-2\" " +
+              $"-c:v libx264 -preset ultrafast -crf 28 -profile:v baseline -level 3.0 " +
+              $"-c:a aac -b:a 128k -movflags +faststart \"{outputPath}\""
+            // Fichier audio seul (pas de flux vidéo) : on ne peut pas appliquer de filtre
+            // vidéo dessus. On ré-encode juste l'audio dans un conteneur toujours lisible.
+            : $"-y -i \"{inputPath}\" -c:a aac -b:a 128k \"{outputPath}\"";
+
+        await RunAsync(FfmpegManager.FfmpegExe, args);
+    }
+
     private static (int Width, int Height) GetDimensions(Orientation orientation) => orientation switch
     {
         Orientation.Portrait9x16 => (1080, 1920),

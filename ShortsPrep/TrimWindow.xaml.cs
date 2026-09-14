@@ -6,7 +6,10 @@ namespace ShortsPrep;
 
 public partial class TrimWindow : Window
 {
+    private readonly VideoProcessor _processor = new();
     private readonly DispatcherTimer _previewStopTimer = new();
+    private readonly string _sourcePath;
+    private string? _proxyPath;
     private bool _updatingFromCode;
     private bool _mediaReady;
 
@@ -16,6 +19,7 @@ public partial class TrimWindow : Window
     public TrimWindow(string mediaPath)
     {
         InitializeComponent();
+        _sourcePath = mediaPath;
 
         _previewStopTimer.Tick += (_, _) =>
         {
@@ -23,59 +27,54 @@ public partial class TrimWindow : Window
             Media.Pause();
         };
 
-        Loaded += (_, _) => OpenMedia(mediaPath);
+        Loaded += async (_, _) => await PreparePreviewAsync();
     }
 
-    private void OpenMedia(string mediaPath)
+    /// <summary>
+    /// Génère un petit proxy H.264/AAC toujours lisible par le lecteur Windows, même si
+    /// le fichier d'origine est dans un codec qu'il ne sait pas décoder (HEVC, etc.).
+    /// La sélection porte sur les timestamps, identiques entre le proxy et l'original.
+    /// </summary>
+    private async Task PreparePreviewAsync()
     {
         try
         {
-            // Chemin absolu obligatoire pour Uri ; évite les erreurs sur chemins relatifs/réseau.
-            var fullPath = Path.GetFullPath(mediaPath);
-            Media.Source = new Uri(fullPath, UriKind.Absolute);
+            var info = await _processor.ProbeAsync(_sourcePath);
+            double total = info.DurationSeconds > 0 ? info.DurationSeconds : 1;
+
+            _updatingFromCode = true;
+            StartSlider.Maximum = total;
+            EndSlider.Maximum = total;
+            StartSlider.Value = 0;
+            EndSlider.Value = total;
+            _updatingFromCode = false;
+            UpdateLabels();
+
+            StatusMessage("Préparation de l'aperçu...");
+            _proxyPath = Path.Combine(Path.GetTempPath(), $"shortsprep_trimpreview_{Guid.NewGuid():N}.mp4");
+            await _processor.CreateCompatiblePreviewAsync(_sourcePath, _proxyPath);
+
+            Media.Source = new Uri(_proxyPath, UriKind.Absolute);
         }
         catch (Exception ex)
         {
-            StatusMessage("Impossible de charger le fichier : " + ex.Message);
+            StatusMessage("Aperçu indisponible (" + ex.Message + "). Tu peux quand même choisir " +
+                          "une plage en te basant sur la durée affichée.");
         }
     }
 
     private void Media_MediaOpened(object sender, RoutedEventArgs e)
     {
         _mediaReady = true;
-        var total = Media.NaturalDuration.HasTimeSpan ? Media.NaturalDuration.TimeSpan.TotalSeconds : 0;
-        if (total <= 0) total = 1;
-
-        _updatingFromCode = true;
-        StartSlider.Maximum = total;
-        EndSlider.Maximum = total;
-        StartSlider.Value = 0;
-        EndSlider.Value = total;
-        _updatingFromCode = false;
-
         UpdateLabels();
-        // Affiche une première image (frame à 0s) sans lancer la lecture.
         Media.Play();
         Media.Pause();
     }
 
     private void Media_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
-        StatusMessage("Ce fichier ne peut pas être prévisualisé par le lecteur Windows " +
-                      "(codec non supporté). Tu peux quand même valider une plage approximative " +
-                      "en te basant sur la durée, ou annuler et traiter le fichier sans recadrage.");
-        // On permet quand même de choisir une plage à l'aveugle si on connaît au moins la durée
-        // via le fichier lui-même n'étant pas lisible ici ; les sliders restent utilisables avec
-        // une durée par défaut de 60s si rien de mieux n'est disponible.
-        if (!_mediaReady)
-        {
-            _updatingFromCode = true;
-            StartSlider.Maximum = 3600;
-            EndSlider.Maximum = 3600;
-            EndSlider.Value = 60;
-            _updatingFromCode = false;
-            UpdateLabels();
-        }
+        StatusMessage("L'aperçu n'a pas pu être affiché, mais la sélection reste utilisable " +
+                      "(basée sur la durée détectée).");
     }
 
     private void StatusMessage(string text)
@@ -116,14 +115,14 @@ public partial class TrimWindow : Window
     {
         if (!_mediaReady)
         {
-            StatusMessage("Aperçu indisponible pour ce fichier (codec non supporté par le lecteur Windows).");
+            StatusMessage("Aperçu indisponible pour ce fichier.");
             return;
         }
 
         Media.Position = TimeSpan.FromSeconds(StartSlider.Value);
         Media.Play();
 
-        var previewLength = Math.Min(EndSlider.Value - StartSlider.Value, 15); // aperçu limité à 15s
+        var previewLength = Math.Min(EndSlider.Value - StartSlider.Value, 15);
         _previewStopTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.2, previewLength));
         _previewStopTimer.Stop();
         _previewStopTimer.Start();
@@ -132,16 +131,28 @@ public partial class TrimWindow : Window
     private void ValidateButton_Click(object sender, RoutedEventArgs e)
     {
         Result = new TrimRange(StartSlider.Value, EndSlider.Value);
-        try { Media.Stop(); } catch { /* ignore */ }
-        DialogResult = true;
-        Close();
+        CleanupAndClose(true);
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         Result = null;
-        try { Media.Stop(); } catch { /* ignore */ }
-        DialogResult = false;
+        CleanupAndClose(false);
+    }
+
+    private void CleanupAndClose(bool dialogResult)
+    {
+        try { Media.Stop(); Media.Close(); } catch { /* ignore */ }
+        DialogResult = dialogResult;
         Close();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_proxyPath is not null && File.Exists(_proxyPath))
+        {
+            try { File.Delete(_proxyPath); } catch { /* best effort */ }
+        }
+        base.OnClosed(e);
     }
 }
